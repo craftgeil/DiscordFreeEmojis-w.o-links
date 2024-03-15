@@ -1,10 +1,10 @@
 /**
  * @name FreeEmojis
  * @version 1.7
- * @description Link emojis if you don't have nitro! Type them out or use the emoji picker!
+ * @description Link emojis if you don't have nitro! Type them out or use the emoji picker! [64px]
  * @author An0
  * @source https://github.com/An00nymushun/DiscordFreeEmojis
- * @updateUrl https://raw.githubusercontent.com/An00nymushun/DiscordFreeEmojis/main/DiscordFreeEmojis.plugin.js
+ * @updateUrl https://raw.githubusercontent.com/An00nymushun/DiscordFreeEmojis/main/DiscordFreeEmojis64px.plugin.js
  */
 
 /*@cc_on
@@ -143,7 +143,7 @@ function Start() {
     }
 
     function replaceEmoji(parseResult, emoji) {
-        parseResult.content = parseResult.content.replace(`<${emoji.animated ? "a" : ""}:${emoji.originalName || emoji.name}:${emoji.id}>`, emoji.url.split("?")[0] + "?size=48");
+        parseResult.content = parseResult.content.replace(`<${emoji.animated ? "a" : ""}:${emoji.originalName || emoji.name}:${emoji.id}>`, "[" + `${emoji.animated ? "" : ""}${emoji.originalName || emoji.name}` + "](" + emoji.url.split("?")[0] + "?size=64)");
     }
 
     parseHook = function() {
@@ -184,7 +184,7 @@ function Stop() {
 return function() { return {
     getName: () => "DiscordFreeEmojis",
     getShortName: () => "FreeEmojis",
-    getDescription: () => "Link emojis if you don't have nitro! Type them out or use the emoji picker!",
+    getDescription: () => "Link emojis if you don't have nitro! Type them out or use the emoji picker! [64px]",
     getVersion: () => "1.7",
     getAuthor: () => "An0",
 

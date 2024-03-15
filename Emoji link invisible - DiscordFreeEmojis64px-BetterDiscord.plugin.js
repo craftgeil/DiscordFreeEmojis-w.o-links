@@ -1,10 +1,10 @@
 /**
  * @name FreeEmojis
- * @version 1.6.1
- * @description Link emojis if you don't have nitro! Type them out or use the emoji picker! [Split]
+ * @version 1.7
+ * @description Link emojis if you don't have nitro! Type them out or use the emoji picker! [64px]
  * @author An0
  * @source https://github.com/An00nymushun/DiscordFreeEmojis
- * @updateUrl https://raw.githubusercontent.com/An00nymushun/DiscordFreeEmojis/main/DiscordFreeEmojisSplit48px.plugin.js
+ * @updateUrl https://raw.githubusercontent.com/An00nymushun/DiscordFreeEmojis/main/DiscordFreeEmojis64px.plugin.js
  */
 
 /*@cc_on
@@ -32,9 +32,6 @@ var FreeEmojis = (() => {
 
 'use strict';
 
-const UrlBase = "https://cdn.discordapp.com/emojis/";
-const DelayBetweenSplit = 100;
-const MaxDelay = 5000;
 const BaseColor = "#0cf";
 
 var Discord;
@@ -98,15 +95,14 @@ var Utils = {
 var Initialized = false;
 var searchHook;
 var parseHook;
-var useEmojiSelectHandlerHook;
-var enqueueHook;
+var getEmojiUnavailableReasonHook;
 function Init()
 {
     Discord = { window: (typeof(unsafeWindow) !== 'undefined') ? unsafeWindow : window };
 
     const webpackUtil = Utils.Webpack();
     if(webpackUtil == null) { Utils.Error("Webpack not found."); return 0; }
-    const { findModuleByUniqueProperties } = webpackUtil;
+    const { findModule, findModuleByUniqueProperties } = webpackUtil;
 
     let emojisModule = findModuleByUniqueProperties([ 'getDisambiguatedEmojiContext', 'searchWithoutFetchingLatest' ]);
     if(emojisModule == null) { Utils.Error("emojisModule not found."); return 0; }
@@ -114,14 +110,8 @@ function Init()
     let messageEmojiParserModule = findModuleByUniqueProperties([ 'parse', 'parsePreprocessor', 'unparse' ]);
     if(messageEmojiParserModule == null) { Utils.Error("messageEmojiParserModule not found."); return 0; }
 
-    let emojiPickerModule = findModuleByUniqueProperties([ 'useEmojiSelectHandler' ]);
-    if(emojiPickerModule == null) { Utils.Error("emojiPickerModule not found."); return 0; }
-
-    let channelCacheModule = findModuleByUniqueProperties( [ 'getChannel', 'getDMFromUserId' ]);
-    if(channelCacheModule == null) Utils.Warn("channelCacheModule not found.");
-
-    let messageQueueModule = findModuleByUniqueProperties( [ 'enqueue', 'handleSend', 'handleEdit' ]);
-    if(messageQueueModule == null) Utils.Warn("messageQueueModule not found.");
+    let emojiPermissionsModule = findModuleByUniqueProperties([ 'getEmojiUnavailableReason' ]);
+    if(emojiPermissionsModule == null) { Utils.Error("emojiPermissionsModule not found."); return 0; }
 
     searchHook = Discord.original_searchWithoutFetchingLatest = emojisModule.searchWithoutFetchingLatest;
     emojisModule.searchWithoutFetchingLatest = function() { return searchHook.apply(this, arguments); };
@@ -129,15 +119,9 @@ function Init()
     parseHook = Discord.original_parse = messageEmojiParserModule.parse;
     messageEmojiParserModule.parse = function() { return parseHook.apply(this, arguments); };
 
-    useEmojiSelectHandlerHook = Discord.original_useEmojiSelectHandler = emojiPickerModule.useEmojiSelectHandler;
-    emojiPickerModule.useEmojiSelectHandler = function() { return useEmojiSelectHandlerHook.apply(this, arguments); };
-
-    if(messageQueueModule != null && channelCacheModule != null) {
-        Discord.MessageQueue = messageQueueModule;
-        Discord.ChannelCache = channelCacheModule;
-        enqueueHook = Discord.original_enqueue = messageQueueModule.enqueue;
-        messageQueueModule.enqueue = function() { return enqueueHook.apply(this, arguments); };
-    }
+    getEmojiUnavailableReasonHook = Discord.original_getEmojiUnavailableReason = emojiPermissionsModule.getEmojiUnavailableReason;
+    emojiPermissionsModule.getEmojiUnavailableReason = function() { return getEmojiUnavailableReasonHook.apply(this, arguments); };
+    
 
     Utils.Log("initialized");
     Initialized = true;
@@ -148,18 +132,18 @@ function Init()
 function Start() {
     if(!Initialized && Init() !== 1) return;
 
-    const { original_parse, original_useEmojiSelectHandler } = Discord;
+    const { original_parse, original_getEmojiUnavailableReason } = Discord;
 
     searchHook = function() {
         let result = Discord.original_searchWithoutFetchingLatest.apply(this, arguments);
-
+        console.log({result, arguments})
         result.unlocked.push(...result.locked);
         result.locked = [];
         return result;
     }
 
     function replaceEmoji(parseResult, emoji) {
-        parseResult.content = parseResult.content.replace(`<${emoji.animated ? "a" : ""}:${emoji.originalName || emoji.name}:${emoji.id}>`, emoji.url.split("?")[0] + "?size=48");
+        parseResult.content = parseResult.content.replace(`<${emoji.animated ? "a" : ""}:${emoji.originalName || emoji.name}:${emoji.id}>`, "[᲼](" + emoji.url.split("?")[0] + "?size=64)");
     }
 
     parseHook = function() {
@@ -184,75 +168,8 @@ function Start() {
         return result;
     };
 
-    useEmojiSelectHandlerHook = function(args) {
-        const { onSelectEmoji, closePopout } = args;
-        const originalHandler = original_useEmojiSelectHandler.apply(this, arguments);
-        return function(data, state) {
-            if(state.toggleFavorite)
-                return originalHandler.apply(this, arguments);
-
-            const emoji = data.emoji;
-
-            if(emoji != null) {
-                onSelectEmoji(emoji, state.isFinalSelection);
-                if(state.isFinalSelection) closePopout();
-            }
-        };
-    };
-
-    if(enqueueHook) {
-        const { MessageQueue, ChannelCache, original_enqueue } = Discord;
-        const escapedUrlBase = UrlBase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const emojiLinkRegex = new RegExp(`^\\s*((?:${escapedUrlBase}[^\\s]+\\s*)+)?(.*?)((?:${escapedUrlBase}[^\\s]+\\s*)+)?\\s*$`, "s");
-        const sendMessage = (message, originalCallback, callback) => {
-            if(message.nonce == null) message.nonce = (BigInt(Date.now() - 14200704e5/*DISCORD_EPOCH*/) << 22n).toString();
-
-            original_enqueue.call(MessageQueue, { type: 0/*send*/, message }, function() {
-                originalCallback.apply(this, arguments);
-                callback();
-            });
-        };
-        enqueueHook = function(packet, callback) {
-            if(packet.type === 0/*send*/) {
-                const message = packet.message;
-                const content = message.content;
-                let match = emojiLinkRegex.exec(content);
-                let newContent = match[2].trim();
-                if(newContent !== "" && (match[3] || match[1])) {
-                    let emojiBefore = match[1];
-                    let emojiAfter = match[3];
-                    let channelId = message.channelId;
-                    let channel = ChannelCache.getChannel(channelId);
-
-                    let rateLimit = channel.rateLimitPerUser * 1000;
-                    if(rateLimit <= MaxDelay) {
-                        let delay = Math.max(DelayBetweenSplit, rateLimit);
-                        message.content = newContent;
-
-                        let messages = [message];
-                        if(emojiBefore) {
-                            messages.unshift({ channelId, content: emojiBefore, nonce: message.nonce });
-                            message.nonce = null;
-                        }
-                        if(emojiAfter) messages.push({ channelId, content: emojiAfter });
-
-                        messages = messages.values();
-                        let currMessage = messages.next().value;
-                        const nextMessage = () => {
-                            sendMessage(currMessage, callback, () => {
-                                currMessage = messages.next().value;
-                                if(currMessage !== undefined) setTimeout(nextMessage, delay);
-                            });
-                        };
-                        nextMessage();
-
-                        return;
-                    }
-                }
-            }
-
-            original_enqueue.apply(this, arguments);
-        };
+    getEmojiUnavailableReasonHook = function() {
+        return null;
     }
 }
 
@@ -261,11 +178,16 @@ function Stop() {
 
     searchHook = Discord.original_searchWithoutFetchingLatest;
     parseHook = Discord.original_parse;
-    useEmojiSelectHandlerHook = Discord.original_useEmojiSelectHandler;
-    if(enqueueHook) enqueueHook = Discord.original_enqueue;
+    getEmojiUnavailableReasonHook = Discord.original_getEmojiUnavailableReason;
 }
 
 return function() { return {
+    getName: () => "DiscordFreeEmojis",
+    getShortName: () => "FreeEmojis",
+    getDescription: () => "Link emojis if you don't have nitro! Type them out or use the emoji picker! [64px]",
+    getVersion: () => "1.7",
+    getAuthor: () => "An0",
+
     start: Start,
     stop: Stop
 }};
