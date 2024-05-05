@@ -142,8 +142,8 @@ function Start() {
         return result;
     }
 
-    function replaceEmoji(parseResult, emoji) {
-        parseResult.content = parseResult.content.replace(`<${emoji.animated ? "a" : ""}:${emoji.originalName || emoji.name}:${emoji.id}>`, "[᲼](" + emoji.url.split("?")[0] + "?size=64)");
+     function replaceEmoji(parseResult, emoji) {
+        parseResult.content = parseResult.content.replace(`<${emoji.animated ? "a" : ""}:${emoji.originalName || emoji.name}:${emoji.id}>`,"[᲼](" + `https://cdn.discordapp.com/emojis/${emoji.id}.${emoji.animated ? 'gif' : 'webp'}?size=64` + ")") ;
     }
 
     parseHook = function() {
